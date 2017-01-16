@@ -1,0 +1,168 @@
+#! /usr/bin/env python
+# -*- coding: utf-8 -*-
+from keras.utils import np_utils
+from keras.models import model_from_json
+from keras.models import Sequential
+from keras.layers.core import Dense, Dropout, Flatten
+from keras.layers.convolutional import Convolution3D, MaxPooling3D, ZeroPadding3D
+from keras.optimizers import SGD
+import keras
+import h5py
+import os
+import cv2
+import numpy as np
+import matplotlib.pyplot as plt
+import sys
+import keras.backend as K
+
+gpu_id='0'
+os.environ['CUDA_VISIBLE_DEVICES']=str(gpu_id)
+os.system('echo $CUDA_VISIBLE_DEVICES')
+
+dim_ordering = K._image_dim_ordering
+print "[Info] image_dim_order (from default ~/.keras/keras.json)={}".format(
+        dim_ordering)
+backend = dim_ordering
+
+import tensorflow as tf
+tf.python.control_flow_ops=tf
+################################define model########################################
+'''
+dim_ordering issue:
+- 'th'-style dim_ordering: [batch, channels, depth, height, width]
+- 'tf'-style dim_ordering: [batch, depth, height, width, channels]
+'''
+def get_model(summary=True, backend='tf'):
+    """ Return the Keras model of the network
+    """
+    model = Sequential()
+    # 1st layer group
+    # Note (https://keras.io/layers/convolutional/#convolution3d):
+    # keras.layers.convolutional.Convolution3D(nb_filter,
+    #                                          kernel_dim1,
+    #                                          kernel_dim2,
+    #                                          kernel_dim3,
+    #                                          init='glorot_uniform',
+    #                                          activation=None,
+    #                                          weights=None,
+    #                                          border_mode='valid',
+    #                                          subsample=(1, 1, 1),
+    #                                          dim_ordering='default',
+    #                                          W_regularizer=None,
+    #                                          b_regularizer=None,
+    #                                          activity_regularizer=None,
+    #                                          W_constraint=None,
+    #                                          b_constraint=None,
+    #                                          bias=True)
+    if backend == 'tf':
+        input_shape=(16, 112, 112, 3) # l, h, w, c
+    else:
+        input_shape=(3, 16, 112, 112) # c, l, h, w
+    model.add(Convolution3D(64, 3, 3, 3, activation='relu',
+                            border_mode='same', name='conv1',
+                            input_shape=input_shape))
+    model.add(MaxPooling3D(pool_size=(1, 2, 2), strides=(1, 2, 2),
+                           border_mode='valid', name='pool1'))
+    # 2nd layer group
+    model.add(Convolution3D(128, 3, 3, 3, activation='relu',
+                            border_mode='same', name='conv2'))
+    model.add(MaxPooling3D(pool_size=(2, 2, 2), strides=(2, 2, 2),
+                           border_mode='valid', name='pool2'))
+    # 3rd layer group
+    model.add(Convolution3D(256, 3, 3, 3, activation='relu',
+                            border_mode='same', name='conv3a'))
+    model.add(Convolution3D(256, 3, 3, 3, activation='relu',
+                            border_mode='same', name='conv3b'))
+    model.add(MaxPooling3D(pool_size=(2, 2, 2), strides=(2, 2, 2),
+                           border_mode='valid', name='pool3'))
+    # 4th layer group
+    model.add(Convolution3D(512, 3, 3, 3, activation='relu',
+                            border_mode='same', name='conv4a'))
+    model.add(Convolution3D(512, 3, 3, 3, activation='relu',
+                            border_mode='same', name='conv4b'))
+    model.add(MaxPooling3D(pool_size=(2, 2, 2), strides=(2, 2, 2),
+                           border_mode='valid', name='pool4'))
+    # 5th layer group
+    model.add(Convolution3D(512, 3, 3, 3, activation='relu',
+                            border_mode='same', name='conv5a'))
+    model.add(Convolution3D(512, 3, 3, 3, activation='relu',
+                            border_mode='same', name='conv5b'))
+    model.add(ZeroPadding3D(padding=(0, 1, 1), name='zeropad5'))
+    model.add(MaxPooling3D(pool_size=(2, 2, 2), strides=(2, 2, 2),
+                           border_mode='valid', name='pool5'))
+    model.add(Flatten())
+    # FC layers group
+    model.add(Dense(4096, activation='relu', name='fc6'))
+    model.add(Dropout(.5))
+    model.add(Dense(4096, activation='relu', name='fc7'))
+    model.add(Dropout(.5))
+    model.add(Dense(3, activation='softmax', name='fc_3'))
+
+    if summary:
+        print(model.summary())
+
+    return model
+###############################end for defination of model###############################
+####################################load weights by name#################################
+model_dir = './models'
+model_weight_filename = os.path.join(model_dir, 'sports1M_weights_tf.h5')
+model = get_model(backend=backend)
+model.load_weights(model_weight_filename, by_name=True)
+model.summary()
+
+#sgd = SGD(lr=0.05, decay=1e-6, momentum=0.9, nesterov=True)
+model.compile(loss='categorical_crossentropy', optimizer='adadelta', metrics=['accuracy'])
+####################################load ucf for finetune#####################################
+def load_train_data():
+    trainfile = h5py.File('/home/yutingzhao/VideoData/UCF-h5/ucf16frame-train1.h5')
+    selectedsmaple = tuple(range(1, 287))
+    X_train = trainfile['X_train'][selectedsmaple,:,:,:,:]
+    y_train = trainfile['y_train'][selectedsmaple,]
+    return X_train, y_train
+
+X_train, y_train = load_train_data()
+print X_train.shape, y_train.shape
+X_train = X_train.astype('float32')
+X_train /= 255
+X_train -= np.mean(X_train)
+y_train = np_utils.to_categorical(y_train, 3)
+X_train= np.rollaxis(X_train, 3, 1)
+print X_train.shape
+# center crop
+# demand shape (None, 16, 112, 112, 3)
+# ucf16frame after rollaxis(49, 16, 224, 224, 3)
+X_train = X_train[:,:,30:142, 8:120, :] # (l, h, w, c)
+
+#start training
+#model.fit(X_train, y_train, batch_size=5, nb_epoch=15, verbose=1)
+####return best model
+best_weights_filepath = './best_weights.hdf5'
+earlyStopping=keras.callbacks.EarlyStopping(monitor='val_loss', patience=10, verbose=1, mode='auto')
+saveBestModel = keras.callbacks.ModelCheckpoint(best_weights_filepath, monitor='val_loss', verbose=1, save_best_only=True, mode='auto')
+history = model.fit(X_train, y_train, batch_size=5, nb_epoch=5, verbose=1, callbacks=[earlyStopping, saveBestModel])
+#history = model.fit(X_train, y_train, batch_size=5, nb_epoch=3, verbose=1)
+#reload best weights
+#model.load_weights(best_weights_filepath)
+########################################end for finetune######################################
+######################################load ucf for test#######################################
+def load_test_data():
+    testfile = h5py.File('/home/yutingzhao/VideoData/UCF-h5/ucf16frame-test1.h5')
+    selectedsmaple = tuple(range(1, 76))
+    X_test = testfile['X_test'][selectedsmaple,:,:,:,:]
+    y_test = testfile['y_test'][selectedsmaple,]
+    testfile.close()
+    return X_test, y_test
+
+X_test, y_test = load_test_data()
+X_test = X_test.astype('float32')
+X_test /= 255
+X_test  -= np.mean(X_test)
+y_test = np_utils.to_categorical(y_test, 3)
+X_test = np.rollaxis(X_test, 3, 1)
+################################end for load ucf test#####################################
+##################################predict ucf test########################################
+X_test = X_test[:,:,30:142, 8:120, :] # (l, h, w, c)
+output = model.predict(X_test, batch_size=5, verbose=1)
+output = np.argmax(output, axis=1)
+y_test = np.argmax(y_test, axis=1)
+print("Accuracy: ", 1.*np.sum(output==y_test)/y_test.shape[0])

@@ -1,0 +1,6 @@
+model = MD.generate_model(decomid=0) ==> 78,409,573
+model = MD.generate_model(decomid=1) ==> 78,429,669
+model = MD.generate_model(decomid=2) ==> 78,331,621
+model = MD.generate_model(decomid=3) ==> 76,759,781
+model = MD.generate_model(decomid=4) ==> 70,470,373
+model = MD.generate_model(decomid=5) ==> 61,035,237

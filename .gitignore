@@ -1,0 +1,8 @@
+models/c3d-sports1M_weights.h5 
+models/conv3d_deepnetA_sport1m_iter_1900000
+models/sports1M_weights_tf_converted_from_th.h5
+models/sports1M_weights_tf.h5 
+models/sports1M_weights_tf.json 
+models/sports1M_weights_th.h5
+models/sports1M_weights_th.json
+models/train01_16_128_171_mean.binaryproto
