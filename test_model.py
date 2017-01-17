@@ -8,7 +8,11 @@ import matplotlib.pyplot as plt
 import c3d_model
 import sys
 import keras.backend as K
+import tensorflow as tf
+
 dim_ordering = K._image_dim_ordering
+if tf.__version__=='0.12.1':
+    dim_ordering = K.image_dim_ordering
 print "[Info] image_dim_order (from default ~/.keras/keras.json)={}".format(
         dim_ordering)
 backend = dim_ordering
@@ -147,7 +151,7 @@ def main():
             break
         vid.append(cv2.resize(img, (171, 128)))
     vid = np.array(vid, dtype=np.float32)
-
+    print 'vid shape: '+str(vid.shape)
     #plt.imshow(vid[2000]/256)
     #plt.show()
 
@@ -158,10 +162,10 @@ def main():
     #diagnose(X, verbose=True, label='X (16-frame clip)', plots=show_images)
 
     # subtract mean
-    mean_cube = np.load('models/train01_16_128_171_mean.npy')
-    mean_cube = np.transpose(mean_cube, (1, 2, 3, 0))
+    #mean_cube = np.load('models/train01_16_128_171_mean.npy')
+    #mean_cube = np.transpose(mean_cube, (1, 2, 3, 0))
     #diagnose(mean_cube, verbose=True, label='Mean cube', plots=show_images)
-    X -= mean_cube
+    #X -= mean_cube
     diagnose(X, verbose=True, label='Mean-subtracted X', plots=show_images)
 
     # center crop
